@@ -11,11 +11,12 @@ Tested with coinbase, bittrex, binance, and gdax but will work with other exchan
 
 1. `git clone https://github.com/blak3r/crypto-balance`
 2. `cd crypto-balance`
-1. `npm install`
-2. `cp config.example.js config.js`
-3. For each exchange you use, add a new object to the exchange list with an `apiKey` and `secret`.  Refer to <https://github.com/ccxt/ccxt> for properties needed for constructor.
-   All the exchanges the author used just required `apiKey` and `secret` as shown in the example config.
-4. run `node app.js`
+3. `npm install`
+4. `cp config.example.js config.js`
+5. For each exchange you use, add a new object to the exchange list with an `apiKey` and `secret`.  Refer to <https://github.com/ccxt/ccxt> for properties needed for constructor.
+   All the exchanges the author used just required `apiKey` and `secret` as shown in the example config. Note: when creating api keys on each exchange the only permissions needed are read.  Don't allow withdrawal or trade for security.
+6. run `node app.js`
+7. Optionally, copy and paste into a spreadsheet.  Use Tools->Split Data Into Columns to split it into cells.
 
 ## Output
 
