@@ -1,0 +1,14 @@
+{
+  "name": "crypto-balance",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node ./app.js"
+  },
+  "dependencies": {
+    "async": "^2.6.0",
+    "ccxt": "^1.10.428",
+    "columnify": "^1.5.4",
+    "lodash": "^4.17.4"
+  }
+}
