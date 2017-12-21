@@ -6,10 +6,17 @@ var exchanges = _.keys(config2.exchanges);
 var util = require('./util');
 var Coinbase = require('coinbase').Client;
 var coinbaseClient = null;
+const log4js = require('log4js');
+log4js.configure({
+                     appenders: { logFile: { type: 'file', filename: 'log.txt' } },
+                     categories: { default: { appenders: ['logFile'], level: 'info' } }
+                 });
+const logger = log4js.getLogger('logFile');
 
 function main() {
 
-    console.log("Retreiving balances from " + _.size(config2.exchanges) );
+    var report = "";
+    console.log("Retreiving balances from: " + config2.exchanges.join(", "));
 
     // JavaScript
     (async () => {
@@ -44,13 +51,14 @@ function main() {
                 return coin;
             });
 
-            console.log("### Current Balances");
-            console.log(util.makeTable(coinBreakdown));
+
+            report += "\n### Current Balances" + "\n";
+            report += util.makeTable(coinBreakdown) + "\n";
 
             // Currently only coinbase is supported for calculating the total ROI
             _.each(results, function (result) {
                 if (result.transactions) {
-                    console.log("\n### Purchase History on " + result.exchange);
+                    report += "\n### Purchase History on " + result.exchange + "\n";
                     var buys = _.filter(result.transactions, function (t) {
                         return t.type === "buy" && t.currency !== "USD"
                     });
@@ -60,31 +68,35 @@ function main() {
                         b.coinPrice = Number(b.native_amount) / Number(b.amount);
                     })
                     buys = _.sortBy(buys, "createdAt");
-                    console.log(util.makeTable(buys, {
+                    report += util.makeTable(buys, {
                         columns: ["createdAt", "currency", "amount", "native_amount", "native_currency", "coinPrice",
                                   "description"]
-                    }));
+                    }) + "\n";
 
                     var summed = groupByAndSum(buys);
-                    console.log("\n### Purchase Summary on " + result.exchange);
-                    console.log(util.makeTable(summed, {columns: ["coin", "amount", "totalInvested", "avgCoinPrice"]}));
+                    report += "\n### Purchase Summary on " + result.exchange + "\n";
+                    report += util.makeTable(summed, {columns: ["coin", "amount", "totalInvested", "avgCoinPrice"]}) + "\n";
 
                     // var transfersToWallet = _.filter(result.transactions, function (t) {
                     //     return t.type === "transfer";
                     // });
                     //
-                    // console.log(util.makeTable(transfersToWallet) );
+                    // report += util.makeTable(transfersToWallet)  + "\n";;
 
                     var totalInvested = _.sumBy(summed, "totalInvested");
                     var presentValue = _.sumBy(coinBreakdown, "usdValue");
                     var roi = presentValue / (presentValue + totalInvested);
-                    console.log("\nTotal Invested (USD): $" + totalInvested.toFixed(2));
-                    console.log(  "Present Value       : $" + presentValue.toFixed(2) );
-                    console.log("ROI: " + roi);
+                    report += "\nTotal Invested (USD): $" + totalInvested.toFixed(2) + "\n";;
+                    report +=   "Present Value       : $" + presentValue.toFixed(2)  + "\n";;
+                    report += "ROI: " + roi + "\n";;
 
-                    console.log("Note: ROI may be inaccurate if you have uninvested funds in a coinbase wallet.  Total Invested doesn't include USD that was transfered into a coinbase wallet... but present value does.")
+                    report += "\n* Note: ROI may be inaccurate if you have uninvested funds in a coinbase wallet.  Total Invested doesn't include USD that was transfered into a coinbase wallet... but present value does." + "\n";
+                    report += "** Present Value prices come from binance" + "\n";;
                 }
-            })
+            });
+
+            console.log( report );
+            logger.info( "\n##########################################################################\n" + report );
         });
     });
 }
