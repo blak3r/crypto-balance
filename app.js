@@ -69,11 +69,11 @@ function main() {
                     console.log("\n### Purchase Summary on " + result.exchange);
                     console.log(util.makeTable(summed, {columns: ["coin", "amount", "totalInvested", "avgCoinPrice"]}));
 
-                    var transfersToWallet = _.filter(result.transactions, function (t) {
-                        return t.type === "transfer";
-                    });
-
-                    console.log(util.makeTable(transfersToWallet) );
+                    // var transfersToWallet = _.filter(result.transactions, function (t) {
+                    //     return t.type === "transfer";
+                    // });
+                    //
+                    // console.log(util.makeTable(transfersToWallet) );
 
                     var totalInvested = _.sumBy(summed, "totalInvested");
                     var presentValue = _.sumBy(coinBreakdown, "usdValue");
