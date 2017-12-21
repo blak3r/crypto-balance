@@ -16,7 +16,7 @@ const logger = log4js.getLogger('logFile');
 function main() {
 
     var report = "";
-    console.log("Retreiving balances from: " + config2.exchanges.join(", "));
+    console.log("Retreiving balances from: " + exchanges.join(", "));
 
     // JavaScript
     (async () => {
