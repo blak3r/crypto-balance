@@ -8,31 +8,116 @@ var Coinbase = require('coinbase').Client;
 var coinbaseClient = null;
 
 function main() {
+
+    console.log("Retreiving balances from " + _.size(config2.exchanges) );
+
+    // JavaScript
+    (async () => {
+
+    }) ()
+
     async.map(exchanges, function (exchange, next) {
         fetchBalanceForExchange(exchange, next);
     }, function (err, results) {
-        //console.log(JSON.stringify(results));
 
-        var totals = _.map(results, function (r) {
-            return r && r.total;
-        });
-        var total = sumEachCoin(totals)
-        var nonZeroTotal = getNonZeroProperties(total);
-        var coinBreakdown = _.map( _.keys(nonZeroTotal), function(currency) {
-            var coin = {
-                currency: currency,
-                total: nonZeroTotal[currency],
-            }
-            _.each(results, function(exchange) {
-                coin[exchange.exchange] = exchange.total[currency] || 0;
+        // Fetch market prices using public bittrex api
+        var exchange = new ccxt.binance();
+        exchange.fetchTickers().then( (tickers) => {
+            var totals = _.map(results, function (r) {
+                return r && r.total;
+            });
+            var totals = sumEachCoin(totals)
+            var nonZeroTotal = getNonZeroProperties(totals);
+           // nonZeroTotal = _.filter(nonZeroTotal, function(t) { return t.currency != "USD"; }); // Remove USD in wallets
+            var coinBreakdown = _.map(_.keys(nonZeroTotal), function (currency) {
+                var coin = {
+                    currency: currency,
+                    total: nonZeroTotal[currency],
+                }
+                _.each(results, function (exchange) {
+                    coin[exchange.exchange] = exchange.total[currency] || 0;
+                });
+
+                coin.marketPrice = getUSDMarketPriceFromTickers(tickers, currency);
+                coin.usdValue = coin.marketPrice * coin.total;
+
+                return coin;
             });
 
-            return coin;
-        });
+            console.log("### Current Balances");
+            console.log(util.makeTable(coinBreakdown));
 
-        console.log("### Current Balances");
-        console.log(util.makeTable(coinBreakdown));
+            // Currently only coinbase is supported for calculating the total ROI
+            _.each(results, function (result) {
+                if (result.transactions) {
+                    console.log("\n### Purchase History on " + result.exchange);
+                    var buys = _.filter(result.transactions, function (t) {
+                        return t.type === "buy" && t.currency !== "USD"
+                    });
+                    _.each(buys, function (b) {
+                        b.amount = Number(b.amount);
+                        b.native_amount = Number(b.native_amount);
+                        b.coinPrice = Number(b.native_amount) / Number(b.amount);
+                    })
+                    buys = _.sortBy(buys, "createdAt");
+                    console.log(util.makeTable(buys, {
+                        columns: ["createdAt", "currency", "amount", "native_amount", "native_currency", "coinPrice",
+                                  "description"]
+                    }));
+
+                    var summed = groupByAndSum(buys);
+                    console.log("\n### Purchase Summary on " + result.exchange);
+                    console.log(util.makeTable(summed, {columns: ["coin", "amount", "totalInvested", "avgCoinPrice"]}));
+
+                    var transfersToWallet = _.filter(result.transactions, function (t) {
+                        return t.type === "transfer";
+                    });
+
+                    console.log(util.makeTable(transfersToWallet) );
+
+                    var totalInvested = _.sumBy(summed, "totalInvested");
+                    var presentValue = _.sumBy(coinBreakdown, "usdValue");
+                    var roi = presentValue / (presentValue + totalInvested);
+                    console.log("\nTotal Invested (USD): $" + totalInvested.toFixed(2));
+                    console.log(  "Present Value       : $" + presentValue.toFixed(2) );
+                    console.log("ROI: " + roi);
+
+                    console.log("Note: ROI may be inaccurate if you have uninvested funds in a coinbase wallet.  Total Invested doesn't include USD that was transfered into a coinbase wallet... but present value does.")
+                }
+            })
+        });
     });
+}
+
+function getUSDMarketPriceFromTickers(tickers, currency) {
+    if( currency === "USD" ) { return 1; }
+    var ticker = tickers[ currency + "/USDT" ];
+    if( ticker ) {
+        return ticker.ask;
+    }
+    // Some altcoins don't have a market ticker directly to usd... so convert to BTC then USD
+    if( !ticker ) {
+        ticker = tickers[ currency + "/BTC"];
+        var tickerBTC = tickers[ "BTC/USDT"];
+        if( ticker ) {
+            return ticker.ask * tickerBTC.ask;
+        }
+    };
+}
+
+
+
+function groupByAndSum(data, groupProperty, sumProperty ) {
+   return  _(data)
+        .groupBy('currency')
+        .map((transaction, currency) => ({
+            coin: currency,
+            amount: _.sumBy(transaction, 'amount'),
+            totalInvested: _.sumBy(transaction, 'native_amount'),
+            native_currency: _.first(transaction).native_currency,
+            avgCoinPrice: _.sumBy(transaction, 'native_amount') / _.sumBy(transaction, 'amount')
+        }))
+        .value();
 }
 
 // fetchMyTrades (binance) doesn't have market symbol BTC
@@ -55,13 +140,35 @@ function fetchBalanceForExchange( exchangeName, callback) {
     if(exchangeName === "coinbase") {
         coinbaseClient = new Coinbase({apiKey: config2.exchanges[exchangeName].apiKey, apiSecret: config2.exchanges[exchangeName].secret});
         var totals = {};
+        var coinbaseTransactions = [];
         coinbaseClient.getAccounts({}, function(err, accounts) {
-            accounts.forEach(function(acct) {
-                console.log('my bal: ' + acct.balance.amount + ' for ' + acct.name);
-                totals[acct.balance.currency] = Number(acct.balance.amount) + (totals[acct.balance.currency]||0);
-            });
+            async.eachSeries( accounts, function(acct, next) {
+                totals[acct.balance.currency] = Number(acct.balance.amount) + (totals[acct.balance.currency] || 0);
+                acct.getTransactions(null, function (err, txns, pagination) {
+                    acct.getTransactions(pagination, function (err, txns) {
+                        if(err) { return next(err); }
 
-            return callback(null, {total: totals, exchange: exchangeName });
+                        var summaries = _.map(txns, function (tx) {
+                            return {
+                                id: tx.id,
+                                type: tx.type,
+                                status: tx.status,
+                                amount: _.get(tx, "amount.amount"),
+                                currency: _.get(tx, "amount.currency"),
+                                native_amount: _.get(tx, "native_amount.amount"),
+                                native_currency: _.get(tx, "native_amount.currency"),
+                                description: _.get(tx, "details.title") + " " + _.get(tx, "details.subtitle"),
+                                createdAt: tx.created_at,
+                            }
+                        });
+                        coinbaseTransactions = coinbaseTransactions.concat(summaries);
+                        next(err);
+                    });
+                });
+            }, function(err) {
+                return callback(null, {total: totals, exchange: exchangeName, transactions: coinbaseTransactions });
+            })
+
         });
     }
     else {
