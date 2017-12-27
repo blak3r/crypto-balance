@@ -30,9 +30,16 @@ function main() {
         // Fetch market prices using public bittrex api
         var exchange = new ccxt.binance();
         exchange.fetchTickers().then( (tickers) => {
+            // Add Statically Configured Exchanges
+            _.map( config2.unsupported_exchanges, function(val, key) {
+                results.push( {exchange: key, total: val} ) ;
+            });
+
+
             var totals = _.map(results, function (r) {
                 return r && r.total;
             });
+
             var totals = sumEachCoin(totals)
             var nonZeroTotal = getNonZeroProperties(totals);
            // nonZeroTotal = _.filter(nonZeroTotal, function(t) { return t.currency != "USD"; }); // Remove USD in wallets
@@ -154,6 +161,7 @@ function fetchBalanceForExchange( exchangeName, callback) {
         var totals = {};
         var coinbaseTransactions = [];
         coinbaseClient.getAccounts({}, function(err, accounts) {
+            if(err) { return callback(err); }
             async.eachSeries( accounts, function(acct, next) {
                 totals[acct.balance.currency] = Number(acct.balance.amount) + (totals[acct.balance.currency] || 0);
                 acct.getTransactions(null, function (err, txns, pagination) {
@@ -178,7 +186,7 @@ function fetchBalanceForExchange( exchangeName, callback) {
                     });
                 });
             }, function(err) {
-                return callback(null, {total: totals, exchange: exchangeName, transactions: coinbaseTransactions });
+                return callback(err, {total: totals, exchange: exchangeName, transactions: coinbaseTransactions });
             })
 
         });
@@ -205,7 +213,7 @@ function sumEachCoin(totals) {
     _.each(keys, function (k) {
         total[k] = 0;
         _.each(totals, function (r) {
-            total[k] += r[k] || 0;
+            total[k] += r && r[k] || 0;
         });
     });
     return total
