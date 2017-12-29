@@ -9,7 +9,9 @@
     "async": "^2.6.0",
     "ccxt": "^1.10.428",
     "columnify": "^1.5.4",
+    "cryptocompare": "^0.3.0",
     "lodash": "^4.17.4",
-    "log4js": "^2.4.1"
+    "log4js": "^2.4.1",
+    "moment": "^2.20.1"
   }
 }

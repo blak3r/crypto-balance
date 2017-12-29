@@ -14,98 +14,129 @@ log4js.configure({
 const logger = log4js.getLogger('logFile');
 
 function main() {
-
-    var report = "";
-    console.log("Retreiving balances from: " + exchanges.join(", "));
-
-    // JavaScript
-    (async () => {
-
-    }) ()
-
-    async.map(exchanges, function (exchange, next) {
-        fetchBalanceForExchange(exchange, next);
-    }, function (err, results) {
-
-        // Fetch market prices using public bittrex api
-        var exchange = new ccxt.binance();
-        exchange.fetchTickers().then( (tickers) => {
-            // Add Statically Configured Exchanges
-            _.map( config2.unsupported_exchanges, function(val, key) {
-                results.push( {exchange: key, total: val} ) ;
+    console.log("Fetching market prices");
+    fetchTickersFromSeveralExchanges(null, function(err, tickers) {
+        fetchBalances(tickers, function(err, coinBreakdown) {
+            makeReport( coinBreakdown, tickers, function(err,results) {
+                if(err) { console.error(err); }
+                process.exit(0);
             });
-
-
-            var totals = _.map(results, function (r) {
-                return r && r.total;
-            });
-
-            var totals = sumEachCoin(totals)
-            var nonZeroTotal = getNonZeroProperties(totals);
-           // nonZeroTotal = _.filter(nonZeroTotal, function(t) { return t.currency != "USD"; }); // Remove USD in wallets
-            var coinBreakdown = _.map(_.keys(nonZeroTotal), function (currency) {
-                var coin = {
-                    currency: currency,
-                    total: nonZeroTotal[currency],
-                }
-                _.each(results, function (exchange) {
-                    coin[exchange.exchange] = exchange.total[currency] || 0;
-                });
-
-                coin.marketPrice = getUSDMarketPriceFromTickers(tickers, currency);
-                coin.usdValue = coin.marketPrice * coin.total;
-
-                return coin;
-            });
-
-
-            report += "\n### Current Balances" + "\n";
-            report += util.makeTable(coinBreakdown) + "\n";
-
-            // Currently only coinbase is supported for calculating the total ROI
-            _.each(results, function (result) {
-                if (result.transactions) {
-                    report += "\n### Purchase History on " + result.exchange + "\n";
-                    var buys = _.filter(result.transactions, function (t) {
-                        return t.type === "buy" && t.currency !== "USD"
-                    });
-                    _.each(buys, function (b) {
-                        b.amount = Number(b.amount);
-                        b.native_amount = Number(b.native_amount);
-                        b.coinPrice = Number(b.native_amount) / Number(b.amount);
-                    })
-                    buys = _.sortBy(buys, "createdAt");
-                    report += util.makeTable(buys, {
-                        columns: ["createdAt", "currency", "amount", "native_amount", "native_currency", "coinPrice",
-                                  "description"]
-                    }) + "\n";
-
-                    var summed = groupByAndSum(buys);
-                    report += "\n### Purchase Summary on " + result.exchange + "\n";
-                    report += util.makeTable(summed, {columns: ["coin", "amount", "totalInvested", "avgCoinPrice"]}) + "\n";
-
-                    // var transfersToWallet = _.filter(result.transactions, function (t) {
-                    //     return t.type === "transfer";
-                    // });
-                    //
-                    // report += util.makeTable(transfersToWallet)  + "\n";;
-
-                    var totalInvested = _.sumBy(summed, "totalInvested");
-                    var presentValue = _.sumBy(coinBreakdown, "usdValue");
-                    var roi = presentValue / (presentValue + totalInvested);
-                    report += "\nTotal Invested (USD): $" + totalInvested.toFixed(2) + "\n";;
-                    report +=   "Present Value       : $" + presentValue.toFixed(2)  + "\n";;
-                    report += "ROI: " + roi + "\n";;
-
-                    report += "\n* Note: ROI may be inaccurate if you have uninvested funds in a coinbase wallet.  Total Invested doesn't include USD that was transfered into a coinbase wallet... but present value does." + "\n";
-                    report += "** Present Value prices come from binance" + "\n";;
-                }
-            });
-
-            console.log( report );
-            logger.info( "\n##########################################################################\n" + report );
         });
     });
+}
+
+function fetchTickersFromSeveralExchanges(opts, callback) {
+    var exchanges = opts && opts.exchanges || ['binance', 'kucoin'];
+
+    async.mapSeries(exchanges, function(exchangeName, next) {
+        var exchange = new ccxt[exchangeName]();
+        exchange.fetchTickers().then( (ticker) => {
+            return next(null,ticker);
+        }).catch( err => {
+            return next(err);
+        });
+    },function(err, results) {
+        if(err) { return callback(err); }
+
+        // Merge Tickers
+        var merged = {};
+        _.each(results, function(result) {
+            merged = _.extend(merged, result);
+        });
+        return callback(err, merged);
+    });
+}
+
+function fetchBalances(tickers, callback) {
+    console.log("Retreiving balances from: " + exchanges.join(", "));
+
+    async.map(exchanges, function (exchange, next) {
+        fetchBalanceForExchange(exchange, function(err, balance) {
+            if(err) { console.error("Failed to retrieve balance from: " + exchange + " error: " + err); }
+            return next(null, balance); // Continue anyway
+        });
+    }, function (err, balances) {
+        // Add Statically Configured Exchanges
+        _.map(config2.unsupported_exchanges, function (val, key) {
+            balances.push({exchange: key, total: val});
+        });
+
+
+        return callback(err, balances);
+    });
+}
+
+function makeReport(balances, tickers, callback ) {
+    var report = "";
+
+    var totals = _.map(balances, function (r) {
+        return r && r.total;
+    });
+
+    var totals = sumEachCoin(totals)
+    var nonZeroTotal = getNonZeroProperties(totals);
+    // nonZeroTotal = _.filter(nonZeroTotal, function(t) { return t.currency != "USD"; }); // Remove USD in wallets
+    var coinBreakdown = _.map(_.keys(nonZeroTotal), function (currency) {
+        var coin = {
+            currency: currency,
+            total: nonZeroTotal[currency],
+        }
+        _.each(balances, function (exchange) {
+            coin[exchange.exchange] = exchange.total[currency] || 0;
+        });
+
+        coin.marketPrice = getUSDMarketPriceFromTickers(tickers, currency);
+        coin.usdValue = coin.marketPrice * coin.total;
+
+        return coin;
+    });
+
+    report += "\n### Current Balances" + "\n";
+    report += util.makeTable(coinBreakdown) + "\n";
+
+    // Currently only coinbase is supported for calculating the total ROI
+    _.each(balances, function (result) {
+        if (result.transactions) {
+            report += "\n### Purchase History on " + result.exchange + "\n";
+            var buys = _.filter(result.transactions, function (t) {
+                return t.type === "buy" && t.currency !== "USD"
+            });
+            _.each(buys, function (b) {
+                b.amount = Number(b.amount);
+                b.native_amount = Number(b.native_amount);
+                b.coinPrice = Number(b.native_amount) / Number(b.amount);
+            })
+            buys = _.sortBy(buys, "createdAt");
+            report += util.makeTable(buys, {
+                columns: ["createdAt", "currency", "amount", "native_amount", "native_currency", "coinPrice",
+                          "description"]
+            }) + "\n";
+
+            var summed = groupByAndSum(buys);
+            report += "\n### Purchase Summary on " + result.exchange + "\n";
+            report += util.makeTable(summed, {columns: ["coin", "amount", "totalInvested", "avgCoinPrice"]}) + "\n";
+
+            // var transfersToWallet = _.filter(result.transactions, function (t) {
+            //     return t.type === "transfer";
+            // });
+            //
+            // report += util.makeTable(transfersToWallet)  + "\n";;
+
+            var totalInvested = _.sumBy(summed, "totalInvested");
+            var presentValue = _.sumBy(coinBreakdown, "usdValue");
+            var roi = (100*(presentValue - totalInvested) / (totalInvested)).toFixed(2);
+            report += "\nTotal Invested (USD): $" + totalInvested.toFixed(2) + "\n";;
+            report +=   "Present Value       : $" + presentValue.toFixed(2)  + "\n";;
+            report += "ROI: " + roi + "\n";;
+
+
+            report += "\n* Note: ROI may be inaccurate if you have uninvested funds in a coinbase wallet.  Total Invested doesn't include USD that was transfered into a coinbase wallet... but present value does." + "\n";
+            report += "** Present Value prices come from binance" + "\n";;
+        }
+    });
+
+    console.log( report );
+    logger.info( "\n##########################################################################\n" + report );
 }
 
 function getUSDMarketPriceFromTickers(tickers, currency) {

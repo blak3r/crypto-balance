@@ -1,5 +1,6 @@
 var columnify = require('columnify');
 var _ = require('lodash');
+var moment = require('moment');
 
 /**
  *
