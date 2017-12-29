@@ -127,7 +127,7 @@ function makeReport(balances, tickers, callback ) {
             var roi = (100*(presentValue - totalInvested) / (totalInvested)).toFixed(2);
             report += "\nTotal Invested (USD): $" + totalInvested.toFixed(2) + "\n";;
             report +=   "Present Value       : $" + presentValue.toFixed(2)  + "\n";;
-            report += "ROI: " + roi + "\n";;
+            report += "ROI: " + roi + "%\n";;
 
 
             report += "\n* Note: ROI may be inaccurate if you have uninvested funds in a coinbase wallet.  Total Invested doesn't include USD that was transfered into a coinbase wallet... but present value does." + "\n";
