@@ -1,6 +1,7 @@
 var columnify = require('columnify');
 var _ = require('lodash');
 var moment = require('moment');
+var fs = require('fs');
 
 /**
  *
@@ -34,3 +35,33 @@ exports.writeAsCsv = function(filename, data, columns) {
     console.log(s);
     fs.writeFileSync(filename, s, {encoding:"utf-8"});
 }
+
+exports.writeToFileSync = function(filename, data) {
+    fs.writeFileSync(filename, data);
+};
+
+exports.readFileSync = function(filename) {
+    return fs.readFileSync(filename, 'utf8');
+};
+
+exports.writeJSONToFileSync = function(filename, data, pretty) {
+    var s = "";
+    if( !pretty ) {
+        s = JSON.stringify(data);
+    } else {
+        s = JSON.stringify(data, null, 3);
+    }
+    try {
+        exports.writeToFileSync(filename, s);
+    }catch(err) {
+        console.error(err);
+    }
+};
+
+exports.readJSONFileSync = function(filename) {
+    try {
+        return JSON.parse( exports.readFileSync(filename) );
+    }catch(err) {
+        return {};
+    }
+};
