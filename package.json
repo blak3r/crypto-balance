@@ -8,6 +8,7 @@
   "dependencies": {
     "async": "^2.6.0",
     "ccxt": "^1.10.428",
+    "coinbase": "^2.0.6",
     "columnify": "^1.5.4",
     "cryptocompare": "^0.3.0",
     "lodash": "^4.17.4",
